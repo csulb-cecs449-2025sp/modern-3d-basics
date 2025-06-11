@@ -12,12 +12,16 @@ We now transform local space vertices to clip space using uniform matrices in th
 #include <glad/glad.h>
 #include <filesystem>
 #include <iostream>
-#include "ShaderProgram.h"
+#include <SFML/Graphics.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Window.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+
+#include "ShaderProgram.h"
+
+#define LOG_FPS
 
 struct Mesh {
 	uint32_t vao;
@@ -31,7 +35,7 @@ struct Vertex3D {
 };
 
 ShaderProgram perspectiveUniformColorShader() {
-	ShaderProgram shader;
+	ShaderProgram shader{};
 	try {
 		shader.load("shaders/simple_perspective.vert", "shaders/uniform_color.frag");
 		shader.activate();
@@ -45,7 +49,7 @@ ShaderProgram perspectiveUniformColorShader() {
 
 Mesh constructMesh(const std::vector<Vertex3D> vertices, const std::vector<uint32_t> faces) {
 	Mesh m{};
-	m.faces = faces.size();
+	m.faces = static_cast<uint32_t>(faces.size());
 
 	// Generate a vertex array object on the GPU.
 	glGenVertexArrays(1, &m.vao);
@@ -77,20 +81,21 @@ Mesh constructMesh(const std::vector<Vertex3D> vertices, const std::vector<uint3
 	return m;
 }
 
-const size_t FLOATS_PER_VERTEX = 3;
 const size_t VERTICES_PER_FACE = 3;
 
 // Reads the vertices and faces of an Assimp mesh, and uses them to initialize mesh structures
 // compatible with the rest of our application.
 void fromAssimpMesh(const aiMesh* mesh, std::vector<Vertex3D>& vertices,
 	std::vector<uint32_t>& faces) {
-	for (size_t i = 0; i < mesh->mNumVertices; i++) {
+	for (size_t i{ 0 }; i < mesh->mNumVertices; ++i) {
 		// Each "vertex" from Assimp has to be transformed into a Vertex3D in our application.
-		vertices.push_back({ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z });
+		vertices.push_back(
+			Vertex3D{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z }
+		);
 	}
 
 	faces.reserve(mesh->mNumFaces * VERTICES_PER_FACE);
-	for (size_t i = 0; i < mesh->mNumFaces; i++) {
+	for (size_t i{ 0 }; i < mesh->mNumFaces; ++i) {
 		// We assume the faces are triangular, so we push three face indexes at a time into our faces list.
 		faces.push_back(mesh->mFaces[i].mIndices[0]);
 		faces.push_back(mesh->mFaces[i].mIndices[1]);
@@ -100,9 +105,14 @@ void fromAssimpMesh(const aiMesh* mesh, std::vector<Vertex3D>& vertices,
 
 // Loads an asset file supported by Assimp, extracts the first mesh in the file, and fills in the 
 // given vertices and faces lists with its data.
-Mesh assimpLoad(const std::string& path) {
-	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(path, aiProcessPreset_TargetRealtime_MaxQuality);
+Mesh assimpLoad(const std::string& path, bool flipUvs = false) {
+	int flags{ static_cast<aiPostProcessSteps>(aiProcessPreset_TargetRealtime_MaxQuality) };
+	if (flipUvs) {
+		flags |= aiProcess_FlipUVs;
+	}
+
+	Assimp::Importer importer{};
+	const aiScene* scene{ importer.ReadFile(path, flags) };
 
 	// If the import failed, report it
 	if (nullptr == scene) {
@@ -110,8 +120,8 @@ Mesh assimpLoad(const std::string& path) {
 		exit(1);
 	}
 	else {
-		std::vector<Vertex3D> vertices;
-		std::vector<uint32_t> faces;
+		std::vector<Vertex3D> vertices{};
+		std::vector<uint32_t> faces{};
 		fromAssimpMesh(scene->mMeshes[0], vertices, faces);
 		return constructMesh(vertices, faces);
 	}
@@ -120,14 +130,6 @@ Mesh assimpLoad(const std::string& path) {
 void drawMesh(Mesh m) {
 	glBindVertexArray(m.vao);
 	// Draw the vertex array, using is "element buffer" to identify the faces.
-
-	// Our shader "no_transform.vert" will be executed on the GPU, once for each vertex
-	// in the vertex array. The output of that shader is used as the vertex's clip-space
-	// coordinates.
-
-	// Our shader "all_green.frag" will be executed next on the GPU, once for each pixel
-	// (fragment) along the lines formed by each triangle in screen space. The output of
-	// that shader is the color to assign that pixel.
 	glDrawElements(GL_TRIANGLES, m.faces, GL_UNSIGNED_INT, nullptr);
 	// Deactivate the mesh's vertex array.
 	glBindVertexArray(0);
@@ -135,7 +137,7 @@ void drawMesh(Mesh m) {
 
 // Constructs a VAO of a single cube.
 Mesh cube() {
-	std::vector<Vertex3D> vertices = {
+	std::vector<Vertex3D> vertices{
 		/*BUR*/{ 0.5, 0.5, -0.5},
 		/*BUL*/{ -0.5, 0.5, -0.5},
 		/*BLL*/{ -0.5, -0.5, -0.5},
@@ -145,7 +147,7 @@ Mesh cube() {
 		/*FLL*/{-0.5, -0.5, 0.5},
 		/*FLR*/{0.5, -0.5, 0.5}
 	};
-	std::vector<uint32_t> faces = {
+	std::vector<uint32_t> faces{
 		0, 1, 2,
 		0, 2, 3,
 		4, 0, 3,
@@ -163,79 +165,85 @@ Mesh cube() {
 }
 
 glm::mat4 buildModelMatrix(const glm::vec3& position, const glm::vec3& orientation, const glm::vec3& scale) {
-	auto m = glm::translate(glm::mat4(1), position);
+	auto m{ glm::translate(glm::mat4(1), position) };
 	m = glm::scale(m, scale);
-	m = glm::rotate(m, orientation[2], glm::vec3(0, 0, 1));
-	m = glm::rotate(m, orientation[0], glm::vec3(1, 0, 0));
-	m = glm::rotate(m, orientation[1], glm::vec3(0, 1, 0));
+	m = glm::rotate(m, orientation[2], glm::vec3{ 0, 0, 1 });
+	m = glm::rotate(m, orientation[0], glm::vec3{ 1, 0, 0 });
+	m = glm::rotate(m, orientation[1], glm::vec3{ 0, 1, 0 });
 	return m;
 }
 
 int main() {
-	std::cout << std::filesystem::current_path() << std::endl;
-	// Initialize the window and OpenGL.
 	sf::ContextSettings settings;
 	settings.depthBits = 24; // Request a 24 bits depth buffer
 	settings.stencilBits = 8;  // Request a 8 bits stencil buffer
-	settings.antialiasingLevel = 2;  // Request 2 levels of antialiasing
-	settings.majorVersion = 3;
+	settings.majorVersion = 3; // You might have to change these on Mac.
 	settings.minorVersion = 3;
-	sf::Window window(sf::VideoMode{ 1200, 800 }, "Modern OpenGL", sf::Style::Resize | sf::Style::Close, settings);
+
+	sf::Window window{
+		sf::VideoMode::getFullscreenModes().at(0), "Modern OpenGL",
+		sf::Style::Resize | sf::Style::Close,
+		sf::State::Windowed, settings
+	};
 
 	gladLoadGL();
 	// Draw in wireframe mode for now.
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-
 	// Inintialize scene objects.
-	//Mesh obj = cube();
-	Mesh obj = assimpLoad("models/bunny.obj");
-	ShaderProgram program = perspectiveUniformColorShader();
+	Mesh obj{ assimpLoad("models/bunny.obj") };
+	ShaderProgram program{ perspectiveUniformColorShader() };
 
 	// Activate the shader program.
 	program.activate();
-	program.setUniform("color", glm::vec3(1, 0.2, 0.9));
+	program.setUniform("color", glm::vec3{ 1, 0.2, 0.9 });
 
-	glm::vec3 objectPosition = { 0, -0.1, -2 };
-	glm::vec3 objectOrientation = { 0, 0, 0 };
-	glm::vec3 objectScale = { 1, 1, 1 };
+	glm::vec3 objectPosition{ 0, -0.4, -2 };
+	glm::vec3 objectOrientation{ 0, 0, 0 };
+	glm::vec3 objectScale{ 4, 4, 4 };
 
 	// Ready, set, go!
-	bool running = true;
 	sf::Clock c;
+
 	auto last = c.getElapsedTime();
-	while (running) {
-		
-		sf::Event ev;
-		while (window.pollEvent(ev)) {
-			if (ev.type == sf::Event::Closed) {
-				running = false;
+	while (window.isOpen()) {
+		// Check for events.
+		while (const std::optional event{ window.pollEvent() }) {
+			if (event->is<sf::Event::Closed>()) {
+				window.close();
 			}
 		}
-		auto now = c.getElapsedTime();
-		auto diff = now - last;
-		std::cout << 1 / diff.asSeconds() << " FPS " << std::endl;
+		auto now{ c.getElapsedTime() };
+		auto diff{ now - last };
 		last = now;
 
-		// Set up the view and projection matrices.
-		glm::mat4 camera = glm::lookAt(glm::vec3(0, 0, 0), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
-		glm::mat4 perspective = glm::perspective(glm::radians(45.0), static_cast<double>(window.getSize().x) / window.getSize().y, 0.1, 100.0);
+#ifdef LOG_FPS
+		// FPS calculation.
+		std::cout << 1 / diff.asSeconds() << " FPS " << std::endl;
+#endif
+		// Adjust object position.
+		objectOrientation += glm::vec3{ 0, 0.0003, 0 };
+		objectPosition += glm::vec3{ 0, 0, 0.00005 };
+
+		// Set up the model, view and projection matrices.
+		glm::mat4 model{
+			buildModelMatrix(objectPosition, objectOrientation, objectScale)
+		};
+		glm::mat4 camera{
+			glm::lookAt(glm::vec3{0, 0, 0}, glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0})
+		}
+		;
+		glm::mat4 perspective{
+			glm::perspective(glm::radians(45.0), static_cast<double>(window.getSize().x) / window.getSize().y, 0.1, 100.0)
+		};
+		program.setUniform("model", model);
 		program.setUniform("view", camera);
 		program.setUniform("projection", perspective);
-
-		// Adjust object position and rebuild model matrix.
-		objectOrientation += glm::vec3(0, 0.0003, 0);
-		objectPosition += glm::vec3(0, 0, 0.00005);
-		glm::mat4 model = buildModelMatrix(objectPosition, objectOrientation, objectScale);
-		program.setUniform("model", model);
 
 		// Clear the OpenGL "context".
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		drawMesh(obj);
 		window.display();
-
-
-		
 	}
 
 	return 0;

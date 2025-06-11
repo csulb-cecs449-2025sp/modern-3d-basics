@@ -12,10 +12,11 @@ We now use explicit vertex and fragment shaders instead of the default OpenGL im
 
 #include <glad/glad.h>
 #include <iostream>
-#include <memory>
-#include "ShaderProgram.h"
+#include <SFML/Graphics.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Window.hpp>
+
+#include "ShaderProgram.h"
 
 struct Mesh {
 	uint32_t vao;
@@ -29,7 +30,7 @@ struct Vertex3D {
 };
 
 ShaderProgram perspectiveUniformColorShader() {
-	ShaderProgram shader;
+	ShaderProgram shader{};
 	try {
 		shader.load("shaders/no_transform.vert", "shaders/uniform_color.frag");
 		shader.activate();
@@ -43,7 +44,7 @@ ShaderProgram perspectiveUniformColorShader() {
 
 Mesh constructMesh(const std::vector<Vertex3D> vertices, const std::vector<uint32_t> faces) {
 	Mesh m{};
-	m.faces = faces.size();
+	m.faces = static_cast<uint32_t>(faces.size());
 
 	// Generate a vertex array object on the GPU.
 	glGenVertexArrays(1, &m.vao);
@@ -78,14 +79,6 @@ Mesh constructMesh(const std::vector<Vertex3D> vertices, const std::vector<uint3
 void drawMesh(Mesh m) {
 	glBindVertexArray(m.vao);
 	// Draw the vertex array, using is "element buffer" to identify the faces.
-
-	// Our shader "no_transform.vert" will be executed on the GPU, once for each vertex
-	// in the vertex array. The output of that shader is used as the vertex's clip-space
-	// coordinates.
-
-	// Our shader "all_green.frag" will be executed next on the GPU, once for each pixel
-	// (fragment) along the lines formed by each triangle in screen space. The output of
-	// that shader is the color to assign that pixel.
 	glDrawElements(GL_TRIANGLES, m.faces, GL_UNSIGNED_INT, nullptr);
 	// Deactivate the mesh's vertex array.
 	glBindVertexArray(0);
@@ -93,7 +86,7 @@ void drawMesh(Mesh m) {
 
 // Constructs a VAO of a single cube.
 Mesh cube() {
-	std::vector<Vertex3D> vertices = {
+	std::vector<Vertex3D> vertices{
 		/*BUR*/{ 0.5, 0.5, -0.5},
 		/*BUL*/{ -0.5, 0.5, -0.5},
 		/*BLL*/{ -0.5, -0.5, -0.5},
@@ -103,7 +96,7 @@ Mesh cube() {
 		/*FLL*/{-0.5, -0.5, 0.5},
 		/*FLR*/{0.5, -0.5, 0.5}
 	};
-	std::vector<uint32_t> faces = {
+	std::vector<uint32_t> faces{
 		0, 1, 2,
 		0, 2, 3,
 		4, 0, 3,
@@ -121,14 +114,17 @@ Mesh cube() {
 }
 
 int main() {
-	// Initialize the window and OpenGL.
 	sf::ContextSettings settings;
 	settings.depthBits = 24; // Request a 24 bits depth buffer
 	settings.stencilBits = 8;  // Request a 8 bits stencil buffer
-	settings.antialiasingLevel = 2;  // Request 2 levels of antialiasing
-	settings.majorVersion = 3;
+	settings.majorVersion = 3; // You might have to change these on Mac.
 	settings.minorVersion = 3;
-	sf::Window window(sf::VideoMode{ 1000, 1000 }, "Modern OpenGL", sf::Style::Resize | sf::Style::Close, settings);
+
+	sf::Window window{
+		sf::VideoMode::getFullscreenModes().at(0), "Modern OpenGL",
+		sf::Style::Resize | sf::Style::Close,
+		sf::State::Windowed, settings
+	};
 
 	gladLoadGL();
 	// Draw in wireframe mode for now.
@@ -136,42 +132,43 @@ int main() {
 
 
 	// Inintialize scene objects.
-	Mesh obj = cube();
-	ShaderProgram program = perspectiveUniformColorShader();
+	Mesh obj{ cube() };
+	ShaderProgram program{ perspectiveUniformColorShader() };
 	// Activate the shader program.
 	program.activate();
-	program.setUniform("color", glm::vec3(1.0, 0.0, 1.0));
+	program.setUniform("color", glm::vec3{ 1.0, 0.0, 1.0 });
 
 	// Ready, set, go!
-	bool running = true;
 	sf::Clock c;
+	int32_t loops{ 0 };
+
 	auto last = c.getElapsedTime();
-	int loops = 0;
-	while (running) {
-		sf::Event ev;
-		while (window.pollEvent(ev)) {
-			if (ev.type == sf::Event::Closed) {
-				running = false;
+	while (window.isOpen()) {
+		// Check for events.
+		while (const std::optional event{ window.pollEvent() }) {
+			if (event->is<sf::Event::Closed>()) {
+				window.close();
 			}
 		}
-		
-		auto now = c.getElapsedTime();
-		auto diff = now - last;
-		std::cout << 1 / diff.asSeconds() << " FPS " << std::endl;
+		auto now{ c.getElapsedTime() };
+		auto diff{ now - last };
 		last = now;
 
+#ifdef LOG_FPS
+		// FPS calculation.
+		std::cout << 1 / diff.asSeconds() << " FPS " << std::endl;
+#endif
 
-		float progress = loops / 10000.0;
-		program.setUniform("color", glm::vec3(progress, 0, 0));
-		std::cout << progress << std::endl;
-		program.activate();
+		// Make the cube slowly grow redder.
+		float progress = loops / 10000.0f;
+		program.setUniform("color", glm::vec3{ progress, 0, 0 });
 		// Clear the OpenGL "context".
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		drawMesh(obj);
 		window.display();
-		loops++;
+		++loops;
 	}
-	
+
 	return 0;
 }
 

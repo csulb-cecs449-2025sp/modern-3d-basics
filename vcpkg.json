@@ -3,7 +3,10 @@
   "version": "1.0",
   "builtin-baseline": "4bee3f5aae7aefbc129ca81c33d6a062b02fcf3b",
   "dependencies": [
-    "sfml",
+    {
+      "name": "sfml",
+      "version>=": "3.0.0"
+    },
     "assimp",
     "glm",
     "glad"

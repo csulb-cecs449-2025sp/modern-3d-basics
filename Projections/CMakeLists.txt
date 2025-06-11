@@ -3,8 +3,8 @@
 
 # Find and link external libraries, like SFML.
 # This only works if Vcpkg has been configured correctly.
-find_package(SFML COMPONENTS system window graphics CONFIG REQUIRED)
-target_link_libraries(Projections PRIVATE sfml-system sfml-network sfml-graphics sfml-window)
+find_package(SFML COMPONENTS System Window Graphics CONFIG REQUIRED)
+target_link_libraries(Projections PRIVATE SFML::System SFML::Window SFML::Graphics)
 
 find_package(assimp CONFIG REQUIRED)
 target_link_libraries(Projections PRIVATE assimp::assimp)
@@ -24,7 +24,7 @@ add_custom_target(copyshaders_projections
         COMMENT "copying ${CMAKE_SOURCE_DIR}/shaders_source to ${CMAKE_CURRENT_BINARY_DIR}/shaders"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-add_dependencies(Projections copyshaders_uniforms)
+add_dependencies(Projections copyshaders_projections)
 
 add_custom_target(copymodels_projections
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/models

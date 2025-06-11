@@ -2,8 +2,8 @@
 
 # Find and link external libraries, like SFML.
 # This only works if Vcpkg has been configured correctly.
-find_package(SFML COMPONENTS system window graphics CONFIG REQUIRED)
-target_link_libraries(Shaders PRIVATE sfml-system sfml-network sfml-graphics sfml-window)
+find_package(SFML COMPONENTS System Window Graphics CONFIG REQUIRED)
+target_link_libraries(Shaders PRIVATE SFML::System SFML::Window SFML::Graphics)
 
 find_package(assimp CONFIG REQUIRED)
 target_link_libraries(Shaders PRIVATE assimp::assimp)
